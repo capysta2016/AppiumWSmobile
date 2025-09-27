@@ -67,7 +67,8 @@ pipeline {
                         docker rm -f android-emulator || true
 
                         # build docker run options dynamically depending on host devices
-                        DOCKER_OPTS="-d --name android-emulator --privileged --cap-add=SYS_ADMIN --cap-add=NET_ADMIN -p 5554:5554 -p 5555:5555 -p 4723:4723 -e EMULATOR_DEVICE=\"Samsung Galaxy S10\" -e APPIUM=1 -e WEB_VNC=1"
+                        # Note: do NOT include quoted env values inside DOCKER_OPTS to avoid word-splitting
+                        DOCKER_OPTS="-d --name android-emulator --privileged --cap-add=SYS_ADMIN --cap-add=NET_ADMIN -p 5554:5554 -p 5555:5555 -p 4723:4723"
 
                         if [ -e /dev/kvm ]; then
                             echo "[CI] /dev/kvm present -> enabling KVM passthrough"
@@ -85,8 +86,8 @@ pipeline {
 
                         echo "[CI] Docker run opts: $DOCKER_OPTS"
 
-                        # First attempt: try with detected devices
-                        docker run $DOCKER_OPTS budtmo/docker-android:emulator_14.0 || true
+                        # First attempt: try with detected devices. Pass environment variables explicitly to avoid shell splitting.
+                        docker run $DOCKER_OPTS -e EMULATOR_DEVICE="Samsung Galaxy S10" -e APPIUM=1 -e WEB_VNC=1 budtmo/docker-android:emulator_14.0 || true
 
                         # give container a bit of time to initialize
                         sleep 30
