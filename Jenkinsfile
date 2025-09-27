@@ -199,10 +199,7 @@ pipeline {
     }
     post {
         always {
-            sh '''
-                docker stop android-emulator || true
-                docker rm android-emulator || true
-            '''
+            // Отключено удаление контейнера для диагностики
             archiveArtifacts artifacts: 'allure-results/**/*', allowEmptyArchive: true
             script {
                 allure([
