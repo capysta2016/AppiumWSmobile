@@ -24,10 +24,11 @@ pipeline {
         stage('Publish Reports') {
             steps {
                 script {
-                    dockerImage.inside {
-                        allure includeProperties: false, jdk: '', results: [[path: 'allure-results']]
-                    }
+                    // Копируем allure-results из контейнера наружу
+                    sh "docker cp $(docker ps -alq):/app/allure-results ./allure-results || true"
                 }
+                // Генерируем Allure-отчёт вне контейнера
+                allure includeProperties: false, jdk: '', results: [[path: 'allure-results']]
             }
         }
     }
