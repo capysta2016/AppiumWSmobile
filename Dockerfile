@@ -45,6 +45,10 @@ RUN appium driver install uiautomator2
 
 # Копирование проекта
 WORKDIR /app
+
+# Скачивание APK-файла из GitHub Releases
+RUN curl -L -o /app/build.apk https://github.com/capysta2016/AppiumWSmobile/releases/download/V1.0.0/build-1758888993235.apk
+
 COPY package*.json ./
 RUN npm install
 
