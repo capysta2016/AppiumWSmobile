@@ -27,6 +27,25 @@ pipeline {
                             budtmo/docker-android:emulator_14.0
                     '''
                     sleep 150
+                    // --- Диагностика контейнера и хоста ---
+                    sh '''
+                        echo "Проверка статуса контейнера:"
+                        docker ps -a | grep android-emulator || echo "Контейнер не найден"
+
+                        echo "Проверка логов контейнера:"
+                        docker logs android-emulator || echo "Нет логов"
+
+                        echo "Проверка /dev/kvm на хосте:"
+                        ls -la /dev/kvm || echo "/dev/kvm отсутствует"
+
+                        echo "Проверка занятости портов:"
+                        netstat -tuln | grep 5554 || echo "Порт 5554 свободен"
+                        netstat -tuln | grep 5555 || echo "Порт 5555 свободен"
+
+                        echo "Проверка свободной памяти и диска:"
+                        free -h || echo "Нет информации о памяти"
+                        df -h || echo "Нет информации о диске"
+                    '''
                     sh '''
                         if ! docker ps | grep -q android-emulator; then
                             echo "❌ Container failed to start!"
