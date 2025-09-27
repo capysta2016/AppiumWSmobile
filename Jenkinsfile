@@ -15,6 +15,39 @@ pipeline {
         APP_ACTIVITY = 'com.fin.app.MainActivity'
     }
     stages {
+        stage('Preflight: Disk & Docker checks') {
+            // always run this stage first; it helps detect low-disk issues before pulling large images
+            when {
+                expression { return params.STAGE_COUNT.toInteger() >= 0 }
+            }
+            steps {
+                script {
+                    sh '''
+                        echo "--- Preflight checks: host disk and docker usage ---"
+                        echo "Date: $(date)"
+                        echo "Filesystem usage (df -h):"
+                        df -h || true
+                        echo "Docker storage summary:"
+                        docker system df || true
+                        echo "Docker info (limited):"
+                        docker info --format '{{.Driver}} driver, Images={{.Images}}, Containers={{.Containers}}' || true
+                        echo "Size of /var/lib/docker/overlay2 (if exists):"
+                        du -sh /var/lib/docker/overlay2 2>/dev/null || echo "/var/lib/docker/overlay2 not present or inaccessible"
+
+                        # check available space on filesystem hosting /var/lib/docker (or /)
+                        avail_kb=$(df --output=avail -k / | tail -1)
+                        # require at least 30GB free (30*1024*1024 KB)
+                        min_kb=$((30 * 1024 * 1024))
+                        echo "Available KB on /: $avail_kb (minimum required: $min_kb)"
+                        if [ "${avail_kb:-0}" -lt "${min_kb}" ]; then
+                            echo "❌ Not enough free disk space. At least 30GB free is recommended for emulator images."
+                            exit 1
+                        fi
+                        echo "✅ Preflight checks passed"
+                    '''
+                }
+            }
+        }
         stage('Start Android Emulator') {
             when {
                 expression { return params.STAGE_COUNT.toInteger() >= 1 }
