@@ -1,5 +1,8 @@
 pipeline {
     agent any
+    parameters {
+        string(name: 'STAGE_COUNT', defaultValue: '1', description: 'How many stages to run sequentially (1 = Start Emulator)')
+    }
     environment {
         DEVICE = 'emulator-5554'
         ANDROID_AVD = 'samsung_galaxy_s10_14.0'
@@ -13,6 +16,9 @@ pipeline {
     }
     stages {
         stage('Start Android Emulator') {
+            when {
+                expression { return params.STAGE_COUNT.toInteger() >= 1 }
+            }
             steps {
                 script {
                     sh 'docker system prune -a -f --volumes || true'
@@ -89,10 +95,24 @@ pipeline {
                             exit 1
                         '''
                     }
+                    // compact post-checks for this stage
+                    sh '''
+                        echo "--- Stage end checks: Start Android Emulator ---"
+                        docker ps | grep android-emulator || echo "Container android-emulator not running"
+                        echo "--- Last container logs (200 lines) ---"
+                        docker logs --tail 200 android-emulator || true
+                        echo "--- ADB devices ---"
+                        docker exec android-emulator adb devices -l || true
+                        echo "--- List test dir inside container ---"
+                        docker exec android-emulator ls -la /home/androidusr/appium-js-tests || true
+                    '''
                 }
             }
         }
         stage('Setup Node.js in Container') {
+            when {
+                expression { return params.STAGE_COUNT.toInteger() >= 2 }
+            }
             steps {
                 sh '''
                     docker exec -u androidusr android-emulator sh -c "
@@ -107,9 +127,19 @@ pipeline {
                         npm --version
                     "
                 '''
+                // compact post-checks for this stage
+                sh '''
+                    echo "--- Stage end checks: Setup Node.js ---"
+                    docker exec android-emulator node --version || true
+                    docker exec android-emulator npm --version || true
+                    docker exec android-emulator ps aux | head -20 || true
+                '''
             }
         }
         stage('Download APK') {
+            when {
+                expression { return params.STAGE_COUNT.toInteger() >= 3 }
+            }
             steps {
                 dir('src/apps') {
                     sh '''
@@ -121,18 +151,38 @@ pipeline {
                             exit 1
                         fi
                     '''
+                    // compact post-checks for this stage
+                    sh '''
+                        echo "--- Stage end checks: Download APK ---"
+                        ls -l src/apps || true
+                        file src/apps/app.apk || true
+                        sha256sum src/apps/app.apk || true
+                    '''
                 }
             }
         }
         stage('Copy APK to Container') {
+            when {
+                expression { return params.STAGE_COUNT.toInteger() >= 4 }
+            }
             steps {
                 sh '''
                     docker cp src/apps/app.apk android-emulator:/home/androidusr/app.apk
                     docker exec android-emulator ls -la /home/androidusr/app.apk
                 '''
+                // compact post-checks for this stage
+                sh '''
+                    echo "--- Stage end checks: Copy APK to Container ---"
+                    docker exec android-emulator ls -la /home/androidusr/app.apk || true
+                    docker exec android-emulator file /home/androidusr/app.apk || true
+                    docker exec android-emulator md5sum /home/androidusr/app.apk || true
+                '''
             }
         }
         stage('Install APK Inside Container') {
+            when {
+                expression { return params.STAGE_COUNT.toInteger() >= 5 }
+            }
             steps {
                 sh '''
                     docker exec android-emulator adb -s ${DEVICE} install -r /home/androidusr/app.apk
@@ -143,9 +193,18 @@ pipeline {
                         fi
                     fi
                 '''
+                // compact post-checks for this stage
+                sh '''
+                    echo "--- Stage end checks: Install APK Inside Container ---"
+                    docker exec android-emulator adb -s ${DEVICE} shell pm list packages | grep ${APP_PACKAGE} || true
+                    docker exec android-emulator adb -s ${DEVICE} shell dumpsys package ${APP_PACKAGE} | head -30 || true
+                '''
             }
         }
         stage('Verify APK Installation') {
+            when {
+                expression { return params.STAGE_COUNT.toInteger() >= 6 }
+            }
             steps {
                 sh '''
                     if docker exec android-emulator sh -c "adb -s ${DEVICE} shell pm list packages | grep -q '${APP_PACKAGE}'"; then
@@ -155,39 +214,84 @@ pipeline {
                         exit 1
                     fi
                 '''
+                // compact post-checks for this stage
+                sh '''
+                    echo "--- Stage end checks: Verify APK Installation ---"
+                    docker exec android-emulator adb -s ${DEVICE} shell pm list packages | grep ${APP_PACKAGE} || true
+                    docker exec android-emulator adb -s ${DEVICE} shell pm path ${APP_PACKAGE} || true
+                '''
             }
         }
         stage('Copy APK to Test Directory') {
+            when {
+                expression { return params.STAGE_COUNT.toInteger() >= 7 }
+            }
             steps {
                 sh '''
                     docker exec android-emulator sh -c "mkdir -p /home/androidusr/appium-js-tests/apps/ && cp /home/androidusr/app.apk /home/androidusr/appium-js-tests/apps/my-app.apk && ls -la /home/androidusr/appium-js-tests/apps/"
                 '''
+                // compact post-checks for this stage
+                sh '''
+                    echo "--- Stage end checks: Copy APK to Test Directory ---"
+                    docker exec android-emulator ls -la /home/androidusr/appium-js-tests/apps || true
+                    docker exec android-emulator ls -la /home/androidusr/appium-js-tests/apps/my-app.apk || true
+                '''
             }
         }
         stage('Install Appium in Container') {
+            when {
+                expression { return params.STAGE_COUNT.toInteger() >= 8 }
+            }
             steps {
                 sh '''
                     docker exec -u androidusr android-emulator sh -c "export NVM_DIR=${NVM_DIR}; [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"; nvm use ${NODE_VERSION}; npm install -g appium@2.19.0"
                 '''
+                // compact post-checks for this stage
+                sh '''
+                    echo "--- Stage end checks: Install Appium in Container ---"
+                    docker exec -u androidusr android-emulator which appium || docker exec -u androidusr android-emulator npm list -g --depth=0 || true
+                    docker exec -u androidusr android-emulator appium --version || true
+                '''
             }
         }
         stage('Copy Tests to Container') {
+            when {
+                expression { return params.STAGE_COUNT.toInteger() >= 9 }
+            }
             steps {
                 sh '''
                     docker exec -u androidusr android-emulator mkdir -p /home/androidusr/appium-js-tests
                     tar -cf - src tests wdio.conf.ts package.json | docker exec -i -u androidusr android-emulator tar -xf - -C /home/androidusr/appium-js-tests/
                     docker exec -u androidusr android-emulator ls -la /home/androidusr/appium-js-tests/
                 '''
+                // compact post-checks for this stage
+                sh '''
+                    echo "--- Stage end checks: Copy Tests to Container ---"
+                    docker exec -u androidusr android-emulator ls -la /home/androidusr/appium-js-tests | head -50 || true
+                    docker exec -u androidusr android-emulator node -v || true
+                '''
             }
         }
         stage('Run Appium Tests') {
+            when {
+                expression { return params.STAGE_COUNT.toInteger() >= 10 }
+            }
             steps {
                 sh '''
                     docker exec -u androidusr -e ANDROID_AVD="${ANDROID_AVD}" android-emulator sh -c "cd /home/androidusr/appium-js-tests; export NVM_DIR=/home/androidusr/.nvm; [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"; nvm use 22; npm install --omit=optional --no-audit --no-fund --no-package-lock; export CI=true; npm run test || true"
                 '''
+                // compact post-checks for this stage
+                sh '''
+                    echo "--- Stage end checks: Run Appium Tests ---"
+                    docker exec -u androidusr android-emulator ls -la /home/androidusr/appium-js-tests/allure-results || echo "No allure-results dir"
+                    docker exec -u androidusr android-emulator tail -n 200 /home/androidusr/appium-js-tests/logs/test-run.log 2>/dev/null || true
+                '''
             }
         }
         stage('Copy Allure Results from Container') {
+            when {
+                expression { return params.STAGE_COUNT.toInteger() >= 11 }
+            }
             steps {
                 sh '''
                     mkdir -p allure-results
