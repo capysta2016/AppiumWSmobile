@@ -2,6 +2,8 @@ pipeline {
     agent any
     parameters {
         string(name: 'STAGE_COUNT', defaultValue: '1', description: 'How many stages to run sequentially (1 = Start Emulator)')
+        string(name: 'MIN_AVAILABLE_GB', defaultValue: '20', description: 'Minimum free space on / (GB) required to proceed with emulator pulls')
+        booleanParam(name: 'SKIP_PREFLIGHT', defaultValue: false, description: 'If true, skip the preflight disk check (use with caution)')
     }
     environment {
         DEVICE = 'emulator-5554'
@@ -16,7 +18,7 @@ pipeline {
     }
     stages {
         stage('Preflight: Disk & Docker checks') {
-            // run this stage only when STAGE_COUNT == '0' (preflight-only run)
+            // run this stage only when STAGE_COUNT == '0' (preflight-only run) OR when explicitly not skipped
             when {
                 expression { return params.STAGE_COUNT == '0' }
             }
@@ -36,12 +38,17 @@ pipeline {
 
                         # check available space on filesystem hosting /var/lib/docker (or /)
                         avail_kb=$(df --output=avail -k / | tail -1)
-                        # require at least 30GB free (30*1024*1024 KB)
-                        min_kb=$((30 * 1024 * 1024))
-                        echo "Available KB on /: $avail_kb (minimum required: $min_kb)"
-                        if [ "${avail_kb:-0}" -lt "${min_kb}" ]; then
-                            echo "❌ Not enough free disk space. At least 30GB free is recommended for emulator images."
-                            exit 1
+                        # min GB threshold is configurable via pipeline parameter MIN_AVAILABLE_GB (default 20GB)
+                        min_gb=${MIN_AVAILABLE_GB:-20}
+                        min_kb=$((min_gb * 1024 * 1024))
+                        echo "Available KB on /: $avail_kb (minimum required: $min_kb -> ${min_gb}GB)"
+                        if [ "${SKIP_PREFLIGHT}" = 'true' ] || [ "${SKIP_PREFLIGHT}" = '1' ]; then
+                            echo "⚠️ SKIP_PREFLIGHT is set — skipping disk free space enforcement (proceed at your own risk)"
+                        else
+                            if [ "${avail_kb:-0}" -lt "${min_kb}" ]; then
+                                echo "❌ Not enough free disk space. At least ${min_gb}GB free is recommended for emulator images."
+                                exit 1
+                            fi
                         fi
                         echo "✅ Preflight checks passed"
                     '''
