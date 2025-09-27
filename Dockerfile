@@ -43,7 +43,7 @@ RUN sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.0" "emu
 RUN echo "no" | avdmanager create avd -n test -k "system-images;android-33;google_apis;x86_64"
 
 # Установка Appium
-RUN npm install -g appium @wdio/cli allure-commandline
+RUN npm install -g appium@3 @wdio/cli allure-commandline
 
 # Установка драйвера UiAutomator2 для Appium
 RUN appium driver install uiautomator2
