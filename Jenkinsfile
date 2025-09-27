@@ -16,7 +16,8 @@ pipeline {
                 script {
                     dockerImage.withRun('--privileged') { c ->
                         // Запускаем тесты внутри контейнера
-                        sh "docker exec ${c.id} echo 'Tests running in container'"
+                        // Запускаем тесты внутри контейнера (замените команду на вашу реальную)
+                        sh "docker exec ${c.id} npx wdio run wdio.conf.ts"
                         // Копируем allure-results из контейнера наружу
                         sh "docker cp ${c.id}:/app/allure-results ./allure-results || true"
                     }
