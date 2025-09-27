@@ -15,8 +15,15 @@ pipeline {
             steps {
                 script {
                     dockerImage.withRun('--privileged') { c ->
-                        // Запускаем тесты внутри контейнера
-                        // Запускаем тесты внутри контейнера (замените команду на вашу реальную)
+                        // Запускаем эмулятор Android
+                        sh "docker exec ${c.id} emulator -avd test -no-window -no-audio -no-snapshot &"
+                        // Ожидаем появления устройства
+                        sh "docker exec ${c.id} adb wait-for-device"
+                        // Даем эмулятору время на загрузку
+                        sh "docker exec ${c.id} sleep 30"
+                        // Проверяем наличие устройства
+                        sh "docker exec ${c.id} adb devices"
+                        // Запускаем тесты
                         sh "docker exec ${c.id} npx wdio run wdio.conf.ts"
                         // Копируем allure-results из контейнера наружу
                         sh "docker cp ${c.id}:/app/allure-results ./allure-results || true"
