@@ -10,25 +10,19 @@ pipeline {
             }
         }
 
-        stage('Run Tests in Docker') {
-            steps {
-                script {
-                    dockerImage.inside('--privileged') {
-                        // Эмулятор и тесты запускаются в CMD Dockerfile
-                        sh 'echo "Tests running in container"'
-                    }
-                }
-            }
-        }
 
-        stage('Publish Reports') {
+        stage('Run Tests and Publish Reports') {
             steps {
                 script {
-                    // Копируем allure-results из контейнера наружу
-                       sh 'docker cp $(docker ps -alq):/app/allure-results ./allure-results || true'
+                    dockerImage.withRun('--privileged') { c ->
+                        // Запускаем тесты внутри контейнера
+                        sh "docker exec ${c.id} echo 'Tests running in container'"
+                        // Копируем allure-results из контейнера наружу
+                        sh "docker cp ${c.id}:/app/allure-results ./allure-results || true"
+                    }
+                    // Генерируем Allure-отчёт вне контейнера
+                    allure includeProperties: false, jdk: '', results: [[path: 'allure-results']]
                 }
-                // Генерируем Allure-отчёт вне контейнера
-                allure includeProperties: false, jdk: '', results: [[path: 'allure-results']]
             }
         }
     }
