@@ -15,6 +15,7 @@ pipeline {
         stage('Start Android Emulator') {
             steps {
                 script {
+                    sh 'docker system prune -a -f --volumes || true'
                     sh 'docker rm -f android-emulator || true'
                     sh '''
                         docker run --name android-emulator -d \
