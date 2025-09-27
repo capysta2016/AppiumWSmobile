@@ -1,4 +1,4 @@
-FROM node:18-bullseye
+FROM node:20-bullseye
 
 # Установка OpenJDK
 RUN apt-get update && apt-get install -y openjdk-11-jdk
