@@ -62,7 +62,7 @@ pipeline {
             steps {
                 script {
                     sh '''
-                        set -euo pipefail
+                        set -eu
                         docker system prune -a -f --volumes || true
                         docker rm -f android-emulator || true
 
