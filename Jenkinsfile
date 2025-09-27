@@ -61,45 +61,74 @@ pipeline {
             }
             steps {
                 script {
-                    sh 'docker system prune -a -f --volumes || true'
-                    sh 'docker rm -f android-emulator || true'
                     sh '''
-                        docker run --name android-emulator -d \
-                            -p 5554:5554 -p 5555:5555 -p 4723:4723 \
-                            --device /dev/kvm \
-                            --privileged \
-                            --cap-add=SYS_ADMIN \
-                            --cap-add=NET_ADMIN \
-                            -e EMULATOR_DEVICE="Samsung Galaxy S10" \
-                            -e APPIUM=1 \
-                            -e WEB_VNC=1 \
-                            budtmo/docker-android:emulator_14.0
-                    '''
-                    sleep 150
-                    // --- Диагностика контейнера и хоста ---
-                    sh '''
-                        echo "Проверка статуса контейнера:"
+                        set -euo pipefail
+                        docker system prune -a -f --volumes || true
+                        docker rm -f android-emulator || true
+
+                        # build docker run options dynamically depending on host devices
+                        DOCKER_OPTS="-d --name android-emulator --privileged --cap-add=SYS_ADMIN --cap-add=NET_ADMIN -p 5554:5554 -p 5555:5555 -p 4723:4723 -e EMULATOR_DEVICE=\"Samsung Galaxy S10\" -e APPIUM=1 -e WEB_VNC=1"
+
+                        if [ -e /dev/kvm ]; then
+                            echo "[CI] /dev/kvm present -> enabling KVM passthrough"
+                            DOCKER_OPTS="$DOCKER_OPTS --device /dev/kvm"
+                        else
+                            echo "[CI] /dev/kvm not present -> will not enable KVM"
+                        fi
+
+                        if [ -e /dev/dri/card0 ]; then
+                            echo "[CI] /dev/dri present -> enabling GPU passthrough"
+                            DOCKER_OPTS="$DOCKER_OPTS --device /dev/dri --group-add video"
+                        else
+                            echo "[CI] /dev/dri not present -> skipping GPU passthrough"
+                        fi
+
+                        echo "[CI] Docker run opts: $DOCKER_OPTS"
+
+                        # First attempt: try with detected devices
+                        docker run $DOCKER_OPTS budtmo/docker-android:emulator_14.0 || true
+
+                        # give container a bit of time to initialize
+                        sleep 30
+
+                        echo "--- Диагностика контейнера и хоста (после первого старта) ---"
                         docker ps -a | grep android-emulator || echo "Контейнер не найден"
-
-                        echo "Проверка логов контейнера:"
-                        docker logs android-emulator || echo "Нет логов"
-
-                        echo "Проверка /dev/kvm на хосте:"
+                        echo "--- Last container logs (tail 200) ---"
+                        docker logs --tail 200 android-emulator || echo "No logs yet"
+                        echo "--- Проверка /dev/kvm на хосте ---"
                         ls -la /dev/kvm || echo "/dev/kvm отсутствует"
+                        echo "--- Проверка занятости портов ---"
+                        netstat -tuln | egrep "5554|5555|4723" || true
+                        echo "--- Проверка свободной памяти и диска ---"
+                        free -h || true
+                        df -h || true
 
-                        echo "Проверка занятости портов:"
-                        netstat -tuln | grep 5554 || echo "Порт 5554 свободен"
-                        netstat -tuln | grep 5555 || echo "Порт 5555 свободен"
+                        # if container isn't running, collect logs and retry in fallback mode without KVM/DRI
+                        if ! docker ps --filter "name=android-emulator" --filter "status=running" | grep -q android-emulator; then
+                            echo "[CI] Initial container run failed or stopped. Collecting logs..."
+                            mkdir -p ${WORKSPACE}/android-debug-logs || true
+                            docker logs --timestamps --details android-emulator > ${WORKSPACE}/android-debug-logs/android-emulator-logs.first.txt 2>&1 || true
+                            docker cp android-emulator:/home/androidusr/logs ${WORKSPACE}/android-debug-logs/ || true
+                            docker cp android-emulator:/var/log ${WORKSPACE}/android-debug-logs/ || true
 
-                        echo "Проверка свободной памяти и диска:"
-                        free -h || echo "Нет информации о памяти"
-                        df -h || echo "Нет информации о диске"
-                    '''
-                    sh '''
-                        if ! docker ps | grep -q android-emulator; then
-                            echo "❌ Container failed to start!"
-                            docker logs android-emulator || echo "No logs available"
-                            exit 1
+                            echo "[CI] Attempting fallback: restart without /dev/kvm and /dev/dri"
+                            docker rm -f android-emulator || true
+                            docker run -d --name android-emulator --privileged -p 5554:5554 -p 5555:5555 -p 4723:4723 -e EMULATOR_DEVICE="Samsung Galaxy S10" -e APPIUM=1 -e WEB_VNC=1 budtmo/docker-android:emulator_14.0 || true
+                            sleep 30
+                            echo "--- Logs after fallback start ---"
+                            docker logs --tail 200 android-emulator || true
+                            if ! docker ps --filter "name=android-emulator" --filter "status=running" | grep -q android-emulator; then
+                                echo "[CI] Fallback also failed. Collecting final logs and failing the stage."
+                                docker logs --timestamps --details android-emulator > ${WORKSPACE}/android-debug-logs/android-emulator-logs.fallback.txt 2>&1 || true
+                                docker cp android-emulator:/home/androidusr/logs ${WORKSPACE}/android-debug-logs/ || true
+                                docker cp android-emulator:/var/log ${WORKSPACE}/android-debug-logs/ || true
+                                ls -la ${WORKSPACE}/android-debug-logs || true
+                                exit 1
+                            else
+                                echo "[CI] Fallback succeeded; container is running without KVM/DRI"
+                            fi
+                        else
+                            echo "[CI] Container is running (initial attempt succeeded)"
                         fi
                     '''
                     sh '''
