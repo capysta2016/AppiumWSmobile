@@ -134,7 +134,7 @@ pipeline {
                     '''
                     sh '''
                         set +e
-                        for i in {1..12}; do
+                        for i in $(seq 1 12); do
                             echo "ADB devices check attempt $i"
                             DEVICES=$(docker exec android-emulator adb devices -l)
                             echo "Devices list: $DEVICES"
@@ -153,7 +153,7 @@ pipeline {
                         sh '''
                             docker exec android-emulator adb -s ${DEVICE} wait-for-device
                             echo "Device ${DEVICE} is connected!"
-                            for i in {1..30}; do
+                            for i in $(seq 1 30); do
                                 boot_status=$(docker exec android-emulator adb -s ${DEVICE} shell getprop sys.boot_completed 2>/dev/null || echo "")
                                 if [ "$boot_status" = "1" ]; then
                                     echo "✅ System fully booted!"
