@@ -87,7 +87,7 @@ pipeline {
                         echo "[CI] Docker run opts: $DOCKER_OPTS"
 
                         # First attempt: try with detected devices. Pass environment variables explicitly to avoid shell splitting.
-                        docker run $DOCKER_OPTS -e EMULATOR_DEVICE="Samsung Galaxy S10" -e APPIUM=1 -e WEB_VNC=1 budtmo/docker-android:emulator_14.0 || true
+                        docker run $DOCKER_OPTS -v "${WORKSPACE}/ci/supervisor/log_web_shared.override.conf:/etc/supervisor/conf.d/log_web_shared.override.conf:ro" -e EMULATOR_DEVICE="Samsung Galaxy S10" -e APPIUM=1 -e WEB_VNC=1 budtmo/docker-android:emulator_14.0 || true
 
                         # give container a bit of time to initialize
                         sleep 30
@@ -114,7 +114,7 @@ pipeline {
 
                             echo "[CI] Attempting fallback: restart without /dev/kvm and /dev/dri"
                             docker rm -f android-emulator || true
-                            docker run -d --name android-emulator --privileged -p 5554:5554 -p 5555:5555 -p 4723:4723 -e EMULATOR_DEVICE="Samsung Galaxy S10" -e APPIUM=1 -e WEB_VNC=1 budtmo/docker-android:emulator_14.0 || true
+                            docker run -d --name android-emulator --privileged -v "${WORKSPACE}/ci/supervisor/log_web_shared.override.conf:/etc/supervisor/conf.d/log_web_shared.override.conf:ro" -p 5554:5554 -p 5555:5555 -p 4723:4723 -e EMULATOR_DEVICE="Samsung Galaxy S10" -e APPIUM=1 -e WEB_VNC=1 budtmo/docker-android:emulator_14.0 || true
                             sleep 30
                             echo "--- Logs after fallback start ---"
                             docker logs --tail 200 android-emulator || true
