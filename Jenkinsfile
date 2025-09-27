@@ -65,12 +65,14 @@ pipeline {
                     sh 'docker rm -f android-emulator || true'
                     sh '''
                         docker run --name android-emulator -d \
-                            -p 5554:5554 -p 5555:5555 \
+                            -p 5554:5554 -p 5555:5555 -p 4723:4723 \
                             --device /dev/kvm \
                             --privileged \
                             --cap-add=SYS_ADMIN \
                             --cap-add=NET_ADMIN \
                             -e EMULATOR_DEVICE="Samsung Galaxy S10" \
+                            -e APPIUM=1 \
+                            -e WEB_VNC=1 \
                             budtmo/docker-android:emulator_14.0
                     '''
                     sleep 150
@@ -345,6 +347,22 @@ pipeline {
         always {
             // Отключено удаление контейнера для диагностики
             archiveArtifacts artifacts: 'allure-results/**/*', allowEmptyArchive: true
+            // Collect container logs and internal /home/androidusr logs for debugging
+            script {
+                sh '''
+                    set -e || true
+                    mkdir -p ${WORKSPACE}/android-debug-logs || true
+                    if docker ps -a | grep -q android-emulator; then
+                        echo "Copying logs from container android-emulator into ${WORKSPACE}/android-debug-logs"
+                        docker cp android-emulator:/home/androidusr/logs ${WORKSPACE}/android-debug-logs/ || true
+                        docker cp android-emulator:/var/log ${WORKSPACE}/android-debug-logs/ || true
+                        docker logs --timestamps --details android-emulator > ${WORKSPACE}/android-debug-logs/android-emulator-logs.txt 2>&1 || true
+                    else
+                        echo "Container android-emulator not present - nothing to copy"
+                    fi
+                '''
+                archiveArtifacts artifacts: 'android-debug-logs/**/*', allowEmptyArchive: true
+            }
             script {
                 allure([
                     reportBuildPolicy: 'ALWAYS',
