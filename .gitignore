@@ -1,0 +1,16 @@
+# Node.js
+/node_modules/
+/npm-debug.log*
+
+# Playwright
+/.cache/
+/.vscode/
+
+# Allure
+/allure-results/
+/allure-report/
+
+# apps
+/apps/
+src/apps/
+/-p/
