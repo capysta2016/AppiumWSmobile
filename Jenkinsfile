@@ -16,9 +16,9 @@ pipeline {
     }
     stages {
         stage('Preflight: Disk & Docker checks') {
-            // always run this stage first; it helps detect low-disk issues before pulling large images
+            // run this stage only when STAGE_COUNT == '0' (preflight-only run)
             when {
-                expression { return params.STAGE_COUNT.toInteger() >= 0 }
+                expression { return params.STAGE_COUNT == '0' }
             }
             steps {
                 script {
